@@ -9,39 +9,52 @@ from gtts import gTTS
 
 app = FastAPI(title="TestMu Voice QA Assistant API")
 
-# Enable CORS for Vercel integration
+# Enable CORS for Vercel integration and expose custom response headers
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows requests from Vercel or local development
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-User-Transcript", "X-Bot-Reply"]  # Ensure custom headers reach frontend
+    expose_headers=["X-User-Transcript", "X-Bot-Reply"]
 )
 
-# Initialize Groq client using environment variable
+# Initialize Groq client
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 @app.get("/")
 def health_check():
     return {"status": "ok", "service": "TestMu Voice QA Assistant API"}
 
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
 @app.post("/voice-agent")
 async def voice_agent(file: UploadFile = File(...)):
     if not GROQ_API_KEY:
         raise HTTPException(
             status_code=500, 
-            detail="GROQ_API_KEY is not configured on the backend server."
+            detail="GROQ_API_KEY environment variable is missing on backend."
         )
 
     groq_client = Groq(api_key=GROQ_API_KEY)
 
-    # 1. Save uploaded WebM/WAV audio file temporarily
+    # 1. Read and validate incoming audio file content
+    content = await file.read()
+    if not content or len(content) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded audio file was empty. Hold button down while speaking."
+        )
+
     temp_audio_path = None
     try:
-        suffix = f".{file.filename.split('.')[-1]}" if "." in file.filename else ".webm"
+        # Determine temporary file extension
+        filename = file.filename or "audio.webm"
+        suffix = f".{filename.split('.')[-1]}" if "." in filename else ".webm"
+        
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_audio:
-            content = await file.read()
             temp_audio.write(content)
             temp_audio_path = temp_audio.name
 
@@ -55,7 +68,7 @@ async def voice_agent(file: UploadFile = File(...)):
         
         user_transcript = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
         if not user_transcript:
-            user_transcript = "No audio detected."
+            user_transcript = "No audible voice recognized."
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Audio Transcription Error: {str(e)}")
@@ -103,10 +116,13 @@ async def voice_agent(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS Synthesis Error: {str(e)}")
 
-    # 6. Return MP3 stream with custom headers
+    # 6. Sanitize custom HTTP headers (strictly ASCII)
+    safe_transcript = user_transcript.encode("ascii", "ignore").decode("ascii") or "Audio processed"
+    safe_bot_reply = bot_reply.encode("ascii", "ignore").decode("ascii") or "Response generated"
+
     headers = {
-        "X-User-Transcript": user_transcript.encode("ascii", "ignore").decode("ascii"),
-        "X-Bot-Reply": bot_reply.encode("ascii", "ignore").decode("ascii")
+        "X-User-Transcript": safe_transcript,
+        "X-Bot-Reply": safe_bot_reply
     }
 
     return Response(content=audio_bytes, media_type="audio/mpeg", headers=headers)
