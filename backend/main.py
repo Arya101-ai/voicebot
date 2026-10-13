@@ -84,19 +84,19 @@ async def voice_agent(file: UploadFile = File(...)):
     elif any(keyword in lowered_transcript for keyword in ["status", "report", "pass", "fail", "build", "metrics"]):
         simulated_context = " Context Note: Simulated status: Suite #1042 completed with 98% pass rate across 50 parallel browser threads."
 
-    # 4. Generate LLM Response with Model Fallback Array
+    # 4. Generate LLM Response with Current Supported Groq Models
     system_prompt = (
         "You are TestMu AI Voice Assistant. Help QA engineers monitor automated test suites, "
         "check pass/fail logs, and trigger test executions. Keep responses concise and conversational "
         f"(maximum 2 short sentences).{simulated_context}"
     )
 
-    # List of candidate models to try in order of preference
+    # Active non-decommissioned models on Groq
     candidate_models = [
+        "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
         "llama-3.2-3b-preview",
-        "llama-3.2-1b-preview",
-        "llama3-8b-8192"
+        "mixtral-8x7b-32768"
     ]
 
     bot_reply = None
@@ -115,15 +115,15 @@ async def voice_agent(file: UploadFile = File(...)):
             )
             bot_reply = completion.choices[0].message.content.strip()
             if bot_reply:
-                break  # Successfully generated response
+                break
         except Exception as e:
             last_error = str(e)
-            continue  # Try next candidate model
+            continue
 
     if not bot_reply:
         raise HTTPException(
             status_code=500, 
-            detail=f"LLM Generation Error across all candidate models. Last error: {last_error}"
+            detail=f"LLM Generation Error across all active models. Last error: {last_error}"
         )
 
     # 5. Synthesize TTS with gTTS
