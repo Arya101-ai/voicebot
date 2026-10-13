@@ -85,7 +85,7 @@ async def voice_agent(file: UploadFile = File(...)):
     elif any(keyword in lowered_transcript for keyword in ["status", "report", "pass", "fail", "build", "metrics"]):
         simulated_context = " Context Note: Simulated status: Suite #1042 completed with 98% pass rate across 50 parallel browser threads."
 
-    # 4. Generate LLM Response via Groq Llama 3
+    # 4. Generate LLM Response via Groq Llama 3.3
     system_prompt = (
         "You are TestMu AI Voice Assistant. Help QA engineers monitor automated test suites, "
         "check pass/fail logs, and trigger test executions. Keep responses concise and conversational "
@@ -94,7 +94,7 @@ async def voice_agent(file: UploadFile = File(...)):
 
     try:
         completion = groq_client.chat.completions.create(
-            model="llama3-8b-8192",  # Updated to valid active model ID
+            model="llama-3.3-70b-versatile",  # Updated to active Groq model
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_transcript}
