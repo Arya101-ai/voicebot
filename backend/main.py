@@ -94,7 +94,7 @@ async def voice_agent(file: UploadFile = File(...)):
 
     try:
         completion = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="llama3-8b-8192",  # Updated to valid active model ID
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_transcript}
