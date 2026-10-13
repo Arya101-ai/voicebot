@@ -50,7 +50,6 @@ async def voice_agent(file: UploadFile = File(...)):
 
     temp_audio_path = None
     try:
-        # Determine temporary file extension
         filename = file.filename or "audio.webm"
         suffix = f".{filename.split('.')[-1]}" if "." in filename else ".webm"
         
@@ -85,26 +84,47 @@ async def voice_agent(file: UploadFile = File(...)):
     elif any(keyword in lowered_transcript for keyword in ["status", "report", "pass", "fail", "build", "metrics"]):
         simulated_context = " Context Note: Simulated status: Suite #1042 completed with 98% pass rate across 50 parallel browser threads."
 
-    # 4. Generate LLM Response via Groq Llama 3.3
+    # 4. Generate LLM Response with Model Fallback Array
     system_prompt = (
         "You are TestMu AI Voice Assistant. Help QA engineers monitor automated test suites, "
         "check pass/fail logs, and trigger test executions. Keep responses concise and conversational "
         f"(maximum 2 short sentences).{simulated_context}"
     )
 
-    try:
-        completion = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",  # Updated to active Groq model
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_transcript}
-            ],
-            temperature=0.6,
-            max_tokens=150
+    # List of candidate models to try in order of preference
+    candidate_models = [
+        "llama-3.1-8b-instant",
+        "llama-3.2-3b-preview",
+        "llama-3.2-1b-preview",
+        "llama3-8b-8192"
+    ]
+
+    bot_reply = None
+    last_error = None
+
+    for model_name in candidate_models:
+        try:
+            completion = groq_client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_transcript}
+                ],
+                temperature=0.6,
+                max_tokens=150
+            )
+            bot_reply = completion.choices[0].message.content.strip()
+            if bot_reply:
+                break  # Successfully generated response
+        except Exception as e:
+            last_error = str(e)
+            continue  # Try next candidate model
+
+    if not bot_reply:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"LLM Generation Error across all candidate models. Last error: {last_error}"
         )
-        bot_reply = completion.choices[0].message.content.strip()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM Generation Error: {str(e)}")
 
     # 5. Synthesize TTS with gTTS
     try:
