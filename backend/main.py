@@ -84,25 +84,29 @@ async def voice_agent(file: UploadFile = File(...)):
     elif any(keyword in lowered_transcript for keyword in ["status", "report", "pass", "fail", "build", "metrics"]):
         simulated_context = " Context Note: Simulated status: Suite #1042 completed with 98% pass rate across 50 parallel browser threads."
 
-    # 4. Generate LLM Response with Current Supported Groq Models
+    # 4. Generate LLM Response (Dynamically Fetch Supported Models)
     system_prompt = (
         "You are TestMu AI Voice Assistant. Help QA engineers monitor automated test suites, "
         "check pass/fail logs, and trigger test executions. Keep responses concise and conversational "
         f"(maximum 2 short sentences).{simulated_context}"
     )
 
-    # Active non-decommissioned models on Groq
-    candidate_models = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "llama-3.2-3b-preview",
-        "mixtral-8x7b-32768"
-    ]
-
     bot_reply = None
     last_error = None
 
-    for model_name in candidate_models:
+    try:
+        # Fetch active models live from Groq API
+        active_models = groq_client.models.list()
+        # Filter text completion models (exclude Whisper models)
+        usable_models = [
+            m.id for m in active_models.data 
+            if "whisper" not in m.id.lower() and "guard" not in m.id.lower()
+        ]
+    except Exception as e:
+        # Fallback list if fetching active models fails
+        usable_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+
+    for model_name in usable_models:
         try:
             completion = groq_client.chat.completions.create(
                 model=model_name,
@@ -123,7 +127,7 @@ async def voice_agent(file: UploadFile = File(...)):
     if not bot_reply:
         raise HTTPException(
             status_code=500, 
-            detail=f"LLM Generation Error across all active models. Last error: {last_error}"
+            detail=f"LLM Generation Error across all available models. Last error: {last_error}"
         )
 
     # 5. Synthesize TTS with gTTS
